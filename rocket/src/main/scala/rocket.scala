@@ -661,13 +661,161 @@ class Rocket(implicit p: Parameters) extends CoreModule()(p) {
     }
   }
   else {
+// start of modification by tsgts
+  // original:
+  /*
     printf("C%d: %d [%d] pc=[%x] W[r%d=%x][%d] R[r%d=%x] R[r%d=%x] inst=[%x] DASM(%x)\n",
          io.prci.id, csr.io.time(31,0), wb_valid, wb_reg_pc,
          Mux(rf_wen, rf_waddr, UInt(0)), rf_wdata, rf_wen,
          wb_reg_inst(19,15), Reg(next=Reg(next=ex_rs(0))),
          wb_reg_inst(24,20), Reg(next=Reg(next=ex_rs(1))),
          wb_reg_inst, wb_reg_inst)
+   */
   }
+  // addition to show the status of execution:
+  val sp_str = "  "
+
+  when (id_ctrl.rocc && !id_illegal_insn) {
+    printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+      io.prci.id, csr.io.time(31,0))
+    printf("at I.D./R.R. stage:\n")
+    printf(sp_str + "pc = 0x%x; inst = 0x%x, DASM(%x)\n",
+      ibuf.io.pc, id_inst(0), id_inst(0) )
+    printf(sp_str + "rs1 = id_rs(0) = 0x%x\n", id_rs(0) )
+    printf(sp_str + "rs2 = id_rs(1) = 0x%x\n", id_rs(1) )
+
+    when (ctrl_killd) {
+      printf(sp_str + "ctrl_killd is true.\n")
+    }
+  }
+
+  when (ex_ctrl.rocc && ex_reg_valid) {
+    when (!ex_reg_xcpt) {
+      printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+        io.prci.id, csr.io.time(31,0))
+      printf("at Ex. stage:\n")
+      printf(sp_str + "pc = 0x%x; inst = 0x%x, DASM(%x)\n",
+        ex_reg_pc, ex_reg_inst, ex_reg_inst)
+      printf(sp_str + "rs1 = ex_rs(0) = 0x%x\n", ex_rs(0) )
+      printf(sp_str + "rs2 = ex_rs(1) = 0x%x\n", ex_rs(1) )
+    }
+  }
+
+  when (mem_ctrl.rocc && mem_reg_valid) {
+    printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+      io.prci.id, csr.io.time(31,0))
+    printf("at Mem. stage:\n")
+    printf(sp_str + "pc = 0x%x; inst = 0x%x, DASM(%x)\n",
+      mem_reg_pc, mem_reg_inst, mem_reg_inst)
+    printf(sp_str + "rs1 = mem_reg_wdata = 0x%x\n",
+      mem_reg_wdata)
+    printf(sp_str + "rs2 = mem_reg_rs2 = 0x%x\n",
+      mem_reg_rs2)
+  }
+
+  val my_mem_stg_reg_rs1 = Reg(next=ex_rs(0))
+  val my_mem_stg_reg_rs2 = Reg(next=ex_rs(1))
+  val my_wb_stg_reg_rs1 = Reg(next=my_mem_stg_reg_rs1)
+  val my_wb_stg_reg_rs2 = Reg(next=my_mem_stg_reg_rs2)
+
+  when (wb_ctrl.rocc && wb_reg_valid) {
+    printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+      io.prci.id, csr.io.time(31,0))
+    printf("at W.B./R.W. stage:\n")
+    printf(sp_str + "pc = 0x%x; inst = 0x%x, DASM(%x)\n",
+      wb_reg_pc, wb_reg_inst, wb_reg_inst)
+
+    printf(sp_str + "rs1: r%d, rs2: r%d\n",
+      wb_reg_inst(19,15), wb_reg_inst(24,20) )
+    printf(sp_str + "rs1 = wb_reg_wdata = 0x%x\n",
+      wb_reg_wdata)
+    printf(sp_str + "rs2 = wb_reg_rs2 = 0x%x\n",
+      wb_reg_rs2)
+    printf(sp_str + "rs1 = my_wb_stg_reg_rs1 = 0x%x\n",
+      my_wb_stg_reg_rs1)
+    printf(sp_str + "rs2 = my_wb_stg_reg_rs2 =0x%x\n",
+      my_wb_stg_reg_rs2)
+
+    printf(sp_str + "rf_wen=%d; rd = r%d, rd <- 0x%x\n",
+      rf_wen, Mux(rf_wen, rf_waddr, UInt(0)), rf_wdata)
+    when (rf_wen) {
+      printf(sp_str + "rf_wen is true; wb_wen=0x%x, ll_wen=0x%x\n",
+        wb_wen, ll_wen)
+    }
+
+    when (io.rocc.cmd.valid) {
+      printf(sp_str + "io.rocc.cmd.valid is true.\n")
+    }
+  }
+  
+  when (wb_ctrl.rocc && !wb_reg_valid) {
+    when (io.rocc.busy || io.rocc.resp.valid) {
+      printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+        io.prci.id, csr.io.time(31,0))
+      printf("(wb_ctrl.rocc && !wb_reg_valid) is true.\n")
+      printf("(io.rocc.busy || io.rocc.resp.valid) is true.\n")
+
+      printf("at W.B./R.W. stage:\n")
+      printf(sp_str + "pc = 0x%x; inst = 0x%x, DASM(%x)\n",
+        wb_reg_pc, wb_reg_inst, wb_reg_inst)
+
+      when (ctrl_killd) {
+        printf("ctrl_killd is true.\n")
+      }
+    }
+
+    when (io.rocc.busy) {
+      printf("io.rocc.busy is true.\n")
+      printf(sp_str + "rf_wen=%d\n", rf_wen)
+    }
+
+    when (io.rocc.resp.valid) {
+      printf("io.rocc.resp.valid is true.\n")
+      printf(sp_str + "rf_wen=%d; rd = r%d, rd <- 0x%x\n",
+        rf_wen, Mux(rf_wen, rf_waddr, UInt(0)), rf_wdata)
+      when (rf_wen) {
+        printf(sp_str + "rf_wen is true; wb_wen=0x%x, ll_wen=0x%x\n",
+          wb_wen, ll_wen)
+      }
+    }
+  }
+
+  when (io.rocc.cmd.valid) {
+    printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+      io.prci.id, csr.io.time(31,0))
+
+    printf("when io.rocc.cmd.valid to coprocessor is true:\n")
+
+    printf(sp_str + "opcode = 0x%x\n", io.rocc.cmd.bits.inst.opcode)
+    printf(sp_str + "funct = 0x%x\n", io.rocc.cmd.bits.inst.funct)
+    printf(sp_str + "xd = %x\n", io.rocc.cmd.bits.inst.xd)
+    printf(sp_str + "xs1 = %x\n", io.rocc.cmd.bits.inst.xs1)
+    printf(sp_str + "xs2 = %x\n", io.rocc.cmd.bits.inst.xs2)
+    printf(sp_str + "rd is r%d\n", io.rocc.cmd.bits.inst.rd)
+    printf(sp_str + "rs1: r%d = 0x%x\n",
+      io.rocc.cmd.bits.inst.rs1, io.rocc.cmd.bits.rs1)
+    printf(sp_str + "rs2: r%d = 0x%x\n",
+      io.rocc.cmd.bits.inst.rs2, io.rocc.cmd.bits.rs2)
+
+    when (io.rocc.cmd.ready) {
+      printf("io.rocc.cmd.ready from coprocessor is true.\n")
+    }
+  }
+
+  when (io.rocc.resp.valid) {
+    printf("\nC%d; at cycle %d; at ctrl-processor:\n",
+      io.prci.id, csr.io.time(31,0))
+
+    printf("io.rocc.resp.valid from coprocessor is true.\n")
+    printf(sp_str + "rd is r%d\n", io.rocc.resp.bits.rd)
+    printf(sp_str + "data to rd = 0x%x\n", io.rocc.resp.bits.data)
+
+    when (io.rocc.resp.ready) {
+      printf(sp_str + "io.rocc.resp.ready to coprocessor is true.\n")
+    }
+  }
+
+// end of modification by tsgts 
 
   def checkExceptions(x: Seq[(Bool, UInt)]) =
     (x.map(_._1).reduce(_||_), PriorityMux(x))
